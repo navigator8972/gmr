@@ -1,3 +1,5 @@
 build
 cover
 *.pyc
+*.pkl
+jupyter/.ipynb_checkpoints

@@ -58,3 +58,37 @@ X_test = np.linspace(-10, 10, 100)
 plt.plot(X_test, cond.to_probability_density(X_test[:, np.newaxis]))
 
 plt.show()
+
+
+#<hyin/Jun-15th-2016> use sklearn fit
+plt.style.use('ggplot')
+gmm.fit(X)
+cond = gmm.condition(np.array([0]), np.array([1.0]))
+
+plt.figure(figsize=(15, 5))
+
+plt.subplot(1, 3, 1)
+plt.title("Gaussian Mixture Model")
+plt.xlim((-10, 10))
+plt.ylim((-10, 10))
+plot_error_ellipses(plt.gca(), gmm, colors=["r", "g", "b"])
+plt.scatter(X[:, 0], X[:, 1])
+
+plt.subplot(1, 3, 2)
+plt.title("Probability Density and Samples")
+plt.xlim((-10, 10))
+plt.ylim((-10, 10))
+x, y = np.meshgrid(np.linspace(-10, 10, 100), np.linspace(-10, 10, 100))
+X_test = np.vstack((x.ravel(), y.ravel())).T
+p = gmm.to_probability_density(X_test)
+p = p.reshape(*x.shape)
+plt.contourf(x, y, p)
+X_sampled = gmm.sample(100)
+plt.scatter(X_sampled[:, 0], X_sampled[:, 1], c="r")
+
+plt.subplot(1, 3, 3)
+plt.title("Conditional PDF $p(y | x = 1)$")
+X_test = np.linspace(-10, 10, 100)
+plt.plot(X_test, cond.to_probability_density(X_test[:, np.newaxis]))
+
+plt.show()

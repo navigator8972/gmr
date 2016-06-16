@@ -2,6 +2,9 @@ import numpy as np
 from .utils import check_random_state
 from .mvn import MVN
 
+import sklearn.mixture as skmixture
+
+import cPickle as cp
 
 class GMM(object):
     """Gaussian Mixture Model.
@@ -27,14 +30,27 @@ class GMM(object):
         If an integer is given, it fixes the seed. Defaults to the global numpy
         random number generator.
     """
+    """
+    <hyin/Jun-15th-2016> Make this as a wrapper of the scikit learn GMM as it supports
+    more features
+    """
     def __init__(self, n_components, priors=None, means=None, covariances=None,
-                 verbose=0, random_state=None):
+                 verbose=0, random_state=None, covariance_type='diag', thresh=None, tol=0.001, min_covar=0.001, n_iter=100, n_init=1, params='wmc', init_params='wmc'):
         self.n_components = n_components
         self.priors = priors
         self.means = means
         self.covariances = covariances
         self.verbose = verbose
         self.random_state = check_random_state(random_state)
+
+        self.covariance_type = covariance_type
+        self.thresh = thresh
+        self.tol = tol
+        self.min_covar = min_covar
+        self.n_iter = n_iter
+        self.n_init = n_init
+        self.params = params
+        self.init_params = init_params
 
     def _check_initialized(self):
         if self.priors is None:
@@ -108,6 +124,59 @@ class GMM(object):
                 self.covariances[k] = (R_n[:, k, np.newaxis] * Xm).T.dot(Xm)
 
         return self
+
+    def fit(self, X):
+        """
+        create an scikit learn GMM to fit the data, retrieve the resultant model parameters
+        use KMeans initialization and support different types of covariances
+        return the BIC score for potential model selection
+        """
+        skGMM = skmixture.GMM(  n_components=self.n_components,
+                                covariance_type=self.covariance_type,
+                                random_state=self.random_state,
+                                thresh=self.thresh,
+                                tol=self.tol,
+                                min_covar=self.min_covar,
+                                n_iter=self.n_iter,
+                                n_init=self.n_init,
+                                params=self.params,
+                                init_params=self.init_params,
+                                verbose=self.verbose)
+        skGMM.fit(X)
+
+        #retrieve estimated parameters
+        self.priors = skGMM.weights_
+        self.means = skGMM.means_
+        if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
+            self.covariances = np.array([np.diag(covar) for covar in skGMM.covars_])
+        elif self.covariance_type == 'tied':
+            self.covariances = np.array([skGMM.covars_ for i in range(self.n_components)])
+        elif self.covariance_type == 'full':
+            self.covariances = skGMM.covars_
+
+        return skGMM.bic(X)
+
+    def save_model(self, fname):
+        if self.priors is None or self.means is None or self.covariances is None:
+            print 'Model parameters have not been initialized.'
+        else:
+            model_dict = {'priors':self.priors, 'means':self.means, 'covariances':self.covariances}
+            cp.dump(model_dict, open(fname, 'wb'))
+            print 'Model saved to {0}'.format(fname)
+        return
+
+    def load_model(self, fname):
+        model_dict = cp.load(open(fname, 'rb'))
+
+        if model_dict is None:
+            print 'Failed to load model {0}'.format(fname)
+        else:
+            self.n_components = len(model_dict['priors'])
+            self.priors = model_dict['priors']
+            self.means = model_dict['means']
+            self.covariances = model_dict['covariances']
+
+        return
 
     def sample(self, n_samples):
         """Sample from Gaussian mixture distribution.
