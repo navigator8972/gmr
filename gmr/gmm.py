@@ -156,11 +156,41 @@ class GMM(object):
 
         return skGMM.bic(X)
 
+    def bic_score(self, X):
+        skGMM = skmixture.GMM(  n_components=self.n_components,
+                                covariance_type=self.covariance_type,
+                                random_state=self.random_state,
+                                thresh=self.thresh,
+                                tol=self.tol,
+                                min_covar=self.min_covar,
+                                n_iter=self.n_iter,
+                                n_init=self.n_init,
+                                params=self.params,
+                                init_params=self.init_params,
+                                verbose=self.verbose)
+        skGMM.weights_ = self.priors
+        skGMM.means_ = self.means
+        if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
+            skGMM.covars_ = np.array([np.diag(covar) for covar in self.covariances])
+        elif self.covariance_type == 'tied':
+            skGMM.covars_ = self.covariances[0]
+        elif self.covariance_type == 'full':
+            skGMM.covars_ = self.covariances
+
+        return skGMM.bic(X)
+
     def save_model(self, fname):
         if self.priors is None or self.means is None or self.covariances is None:
             print 'Model parameters have not been initialized.'
         else:
-            model_dict = {'priors':self.priors, 'means':self.means, 'covariances':self.covariances}
+            model_dict = {'covar_type':self.covariance_type, 'priors':self.priors, 'means':self.means, 'covariances':None}
+            #compress the covariances if its diagonal, spherical or tied
+            if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
+                model_dict['covariances'] = np.array([np.diag(covar) for covar in self.covariances])
+            elif self.covariance_type == 'tied':
+                model_dict['covariances'] = self.covariances[0]
+            else:
+                model_dict['covariances'] = self.covariances
             cp.dump(model_dict, open(fname, 'wb'))
             print 'Model saved to {0}'.format(fname)
         return
@@ -171,11 +201,20 @@ class GMM(object):
         if model_dict is None:
             print 'Failed to load model {0}'.format(fname)
         else:
+
             self.n_components = len(model_dict['priors'])
             self.priors = model_dict['priors']
             self.means = model_dict['means']
-            self.covariances = model_dict['covariances']
-
+            if 'covar_type' in model_dict:
+                self.covariance_type = model_dict['covar_type']
+                if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
+                    self.covariances = np.array([np.diag(covar) for covar in model_dict['covariances']])
+                elif self.covariance_type == 'tied':
+                    self.Covariances = np.array([model_dict['covariances'] for i in range(self.n_components)])
+                else:
+                    self.covariances = model_dict['covariances']
+            else:
+                self.covariances = model_dict['covariances']
         return
 
     def sample(self, n_samples):

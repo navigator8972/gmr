@@ -24,13 +24,16 @@ aug_data = np.concatenate((img_data, fa_data_normed), axis=1)
 data_sets = ds.construct_datasets(aug_data, validation_ratio=.1, test_ratio=.1)
 
 random_state = 0
-covariance_types = ['spherical', 'diag', 'tied', 'full']
-n_comps = [2]
+# covariance_types = ['spherical', 'diag', 'tied', 'full']
+# covariance_types = ['diag', 'full']
+covariance_types = ['diag']
+# n_comps = [10, 20, 50, 80, 100, 120]
+n_comps = [150, 200, 250, 280, 300, 350]
 bic_score_dict = {'spherical':[], 'diag':[], 'tied':[], 'full':[], 'n_comps':n_comps}
 print 'Start fitting...'
 for covar_type in covariance_types:
     for n_comp in n_comps:
-        gmm_mdl = gmm.GMM(n_components=n_comp, covariance_type=covar_type, random_state=random_state, verbose=2, n_iter=10, n_init=1)
+        gmm_mdl = gmm.GMM(n_components=n_comp, covariance_type=covar_type, random_state=random_state, verbose=2, n_iter=200, n_init=1)
         bic_score = gmm_mdl.fit(data_sets.train._data)
 
         print 'BIC Score:', bic_score
