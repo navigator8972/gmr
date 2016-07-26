@@ -52,6 +52,9 @@ class GMM(object):
         self.params = params
         self.init_params = init_params
 
+        self.mvn_cache_ = None
+        self.condition_indices_cache_ = None
+
     def _check_initialized(self):
         if self.priors is None:
             raise ValueError("Priors have not been initialized")
@@ -311,12 +314,26 @@ class GMM(object):
         priors = np.empty(self.n_components)
         means = np.empty((self.n_components, n_features))
         covariances = np.empty((self.n_components, n_features, n_features))
-        for k in range(self.n_components):
-            mvn = MVN(mean=self.means[k], covariance=self.covariances[k],
-                      random_state=self.random_state)
-            conditioned = mvn.condition(indices, x)
+
+        cache_hit = False
+        if self.condition_indices_cache_ is not None and self.mvn_cache_ is not None:
+            #check if the indices hit the cache
+            if np.array_equal(indices, self.condition_indices_cache_):
+                cache_hit = True
+
+        if not cache_hit:
+            self.mvn_cache_ = []
+            for k in range(self.n_components):
+                self.mvn_cache_.append(MVN(mean=self.means[k], covariance=self.covariances[k],
+                        random_state=self.random_state))
+            self.condition_indices_cache_ = indices
+
+        mvns = self.mvn_cache_
+
+        for k in range(len(mvns)):
+            conditioned = mvns[k].condition(indices, x)
             priors[k] = (self.priors[k] *
-                         mvn.marginalize(indices).to_probability_density(x))
+                         mvns[k].marginalize(indices).to_probability_density(x))
             means[k] = conditioned.mean
             covariances[k] = conditioned.covariance
         priors /= priors.sum()
@@ -347,6 +364,8 @@ class GMM(object):
         n_features_2 = self.means.shape[1] - n_features_1
         Y = np.empty((n_samples, n_features_2))
         for n in range(n_samples):
+            if n % 100 == 0:
+                print 'processing sample {0}...'.format(n)
             conditioned = self.condition(indices, X[n])
             Y[n] = conditioned.priors.dot(conditioned.means)
         return Y

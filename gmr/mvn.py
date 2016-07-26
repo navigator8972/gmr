@@ -40,6 +40,11 @@ class MVN(object):
         self.random_state = check_random_state(random_state)
         self.norm = None
 
+        #cache for processing multiple samples
+        self.i1_cache_ = None
+        self.i2_cache_ = None
+        self.prec_22_cache_ = None
+
     def _check_initialized(self):
         if self.mean is None:
             raise ValueError("Mean has not been initialized")
@@ -109,7 +114,7 @@ class MVN(object):
         D = X - self.mean
         cov_sol = sp.linalg.solve_triangular(L, D.T, lower=True).T
         if self.norm is None:
-            self.norm = 0.5 / np.pi ** (0.5 * n_features) / sp.linalg.det(L)
+            self.norm = 0.5 / np.pi ** (0.5 * n_features) / (sp.linalg.det(L) + 1e-5)
 
         DpD = np.sum(cov_sol ** 2, axis=1)
         return self.norm * np.exp(-0.5 * DpD)
@@ -182,7 +187,19 @@ class MVN(object):
         cov_12 = self.covariance[np.ix_(i1, i2)]
         cov_11 = self.covariance[np.ix_(i1, i1)]
         cov_22 = self.covariance[np.ix_(i2, i2)]
-        prec_22 = pinvh(cov_22)
+        cache_hit = False
+        if self.i1_cache_ is not None and self.i2_cache_ is not None:
+            #check if we are retrieving the same covariance submatrices as the cache
+            if np.array_equal(self.i1_cache_, i1) and np.array_equal(self.i2_cache_, i2) and self.prec_22_cache_ is not None:
+                prec_22 = self.prec_22_cache_
+                cache_hit = True
+        if not cache_hit:
+        #calculate for now and update the cache...
+            prec_22 = pinvh(cov_22)
+            self.prec_22_cache_ = prec_22
+            self.i1_cache_ = i1
+            self.i2_cache_ = i2
+
         regression_coeffs = cov_12.dot(prec_22)
 
         mean = self.mean[i1] + regression_coeffs.dot((X - self.mean[i2]).T).T
