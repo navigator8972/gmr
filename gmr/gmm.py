@@ -243,12 +243,20 @@ class GMM(object):
         p : array, shape (n_samples,)
             Probability densities of data.
         """
-        self._check_initialized()
+        # self._check_initialized()
+        #
+        # p = [MVN(mean=self.means[k], covariance=self.covariances[k],
+        #          random_state=self.random_state).to_probability_density(X)
+        #      for k in range(self.n_components)]
+        p = self.to_components_probability_density(self, X)
+        return np.dot(self.priors, p)
 
+    def to_components_probability_density(self, X):
+        self._check_initialized()
         p = [MVN(mean=self.means[k], covariance=self.covariances[k],
                  random_state=self.random_state).to_probability_density(X)
              for k in range(self.n_components)]
-        return np.dot(self.priors, p)
+        return p
 
     def condition(self, indices, x):
         """Conditional distribution over given indices.
