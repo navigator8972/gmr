@@ -52,9 +52,6 @@ class GMM(object):
         self.params = params
         self.init_params = init_params
 
-        self.mvn_cache_ = None
-        self.condition_indices_cache_ = None
-
     def _check_initialized(self):
         if self.priors is None:
             raise ValueError("Priors have not been initialized")
@@ -159,41 +156,11 @@ class GMM(object):
 
         return skGMM.bic(X)
 
-    def bic_score(self, X):
-        skGMM = skmixture.GMM(  n_components=self.n_components,
-                                covariance_type=self.covariance_type,
-                                random_state=self.random_state,
-                                thresh=self.thresh,
-                                tol=self.tol,
-                                min_covar=self.min_covar,
-                                n_iter=self.n_iter,
-                                n_init=self.n_init,
-                                params=self.params,
-                                init_params=self.init_params,
-                                verbose=self.verbose)
-        skGMM.weights_ = self.priors
-        skGMM.means_ = self.means
-        if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
-            skGMM.covars_ = np.array([np.diag(covar) for covar in self.covariances])
-        elif self.covariance_type == 'tied':
-            skGMM.covars_ = self.covariances[0]
-        elif self.covariance_type == 'full':
-            skGMM.covars_ = self.covariances
-
-        return skGMM.bic(X)
-
     def save_model(self, fname):
         if self.priors is None or self.means is None or self.covariances is None:
             print 'Model parameters have not been initialized.'
         else:
-            model_dict = {'covar_type':self.covariance_type, 'priors':self.priors, 'means':self.means, 'covariances':None}
-            #compress the covariances if its diagonal, spherical or tied
-            if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
-                model_dict['covariances'] = np.array([np.diag(covar) for covar in self.covariances])
-            elif self.covariance_type == 'tied':
-                model_dict['covariances'] = self.covariances[0]
-            else:
-                model_dict['covariances'] = self.covariances
+            model_dict = {'priors':self.priors, 'means':self.means, 'covariances':self.covariances}
             cp.dump(model_dict, open(fname, 'wb'))
             print 'Model saved to {0}'.format(fname)
         return
@@ -204,20 +171,11 @@ class GMM(object):
         if model_dict is None:
             print 'Failed to load model {0}'.format(fname)
         else:
-
             self.n_components = len(model_dict['priors'])
             self.priors = model_dict['priors']
             self.means = model_dict['means']
-            if 'covar_type' in model_dict:
-                self.covariance_type = model_dict['covar_type']
-                if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
-                    self.covariances = np.array([np.diag(covar) for covar in model_dict['covariances']])
-                elif self.covariance_type == 'tied':
-                    self.Covariances = np.array([model_dict['covariances'] for i in range(self.n_components)])
-                else:
-                    self.covariances = model_dict['covariances']
-            else:
-                self.covariances = model_dict['covariances']
+            self.covariances = model_dict['covariances']
+
         return
 
     def sample(self, n_samples):
@@ -314,26 +272,12 @@ class GMM(object):
         priors = np.empty(self.n_components)
         means = np.empty((self.n_components, n_features))
         covariances = np.empty((self.n_components, n_features, n_features))
-
-        cache_hit = False
-        if self.condition_indices_cache_ is not None and self.mvn_cache_ is not None:
-            #check if the indices hit the cache
-            if np.array_equal(indices, self.condition_indices_cache_):
-                cache_hit = True
-
-        if not cache_hit:
-            self.mvn_cache_ = []
-            for k in range(self.n_components):
-                self.mvn_cache_.append(MVN(mean=self.means[k], covariance=self.covariances[k],
-                        random_state=self.random_state))
-            self.condition_indices_cache_ = indices
-
-        mvns = self.mvn_cache_
-
-        for k in range(len(mvns)):
-            conditioned = mvns[k].condition(indices, x)
+        for k in range(self.n_components):
+            mvn = MVN(mean=self.means[k], covariance=self.covariances[k],
+                      random_state=self.random_state)
+            conditioned = mvn.condition(indices, x)
             priors[k] = (self.priors[k] *
-                         mvns[k].marginalize(indices).to_probability_density(x))
+                         mvn.marginalize(indices).to_probability_density(x))
             means[k] = conditioned.mean
             covariances[k] = conditioned.covariance
         priors /= priors.sum()
@@ -364,11 +308,27 @@ class GMM(object):
         n_features_2 = self.means.shape[1] - n_features_1
         Y = np.empty((n_samples, n_features_2))
         for n in range(n_samples):
-            if n % 100 == 0:
-                print 'processing sample {0}...'.format(n)
             conditioned = self.condition(indices, X[n])
             Y[n] = conditioned.priors.dot(conditioned.means)
         return Y
+
+    def predict_with_covariance(self, indices, X):
+        """
+        Predict as a single Gaussian approximation
+        return both mean and covariance
+        """
+        self._check_initialized()
+
+        n_samples, n_features_1 = X.shape
+        n_features_2 = self.means.shape[1] - n_features_1
+        Y = np.empty((n_samples, n_features_2))
+        Y_Sigma = np.empty((n_samples, n_features_2, n_features_2))
+        for n in range(n_samples):
+            conditioned = self.condition(indices, X[n])
+            Y[n] = conditioned.priors.dot(conditioned.means)
+            Y_Sigma[n] = np.sum([conditioned.priors[i] * (conditioned.covariances[i] +
+                np.array([conditioned.means[i]]).T.dot(np.array([conditioned.means[i]])))for i in range(len(conditioned.priors))], axis=0) - np.array([Y[n]]).T.dot(np.array([Y[n]]))
+        return Y, Y_Sigma
 
     def to_ellipses(self, factor=1.0):
         """Compute error ellipses.
