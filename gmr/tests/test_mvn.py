@@ -1,8 +1,8 @@
 import numpy as np
-from gmr.utils import check_random_state
+from gmr.gmr.utils import check_random_state
 from nose.tools import assert_equal, assert_less, assert_raises, assert_true
 from numpy.testing import assert_array_almost_equal
-from gmr import MVN, plot_error_ellipse
+from gmr.gmr import MVN, plot_error_ellipse, check_loglikelihood_grads
 
 
 mean = np.array([0.0, 1.0])
@@ -49,6 +49,16 @@ def test_probability_density():
     p = mvn.to_probability_density(X)
     approx_int = np.sum(p) * ((x[-1] - x[0]) / 201) ** 2
     assert_less(np.abs(1.0 - approx_int), 0.01)
+
+def test_probability_density_gradient():
+    """Test the gradient of logarithm PDF of MVN"""
+    random_state = check_random_state(0)
+    mvn = MVN(mean, covariance, random_state=random_state)
+
+    x = np.linspace(-100, 100, 201)
+    X = np.vstack(map(np.ravel, np.meshgrid(x, x))).T
+    assert_less(check_loglikelihood_grads(mvn, X), 1e-4)
+    return
 
 
 def test_probability_density_without_noise():

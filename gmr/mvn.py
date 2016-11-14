@@ -121,6 +121,28 @@ class MVN(object):
         DpD = np.sum(cov_sol ** 2, axis=1)
         return self.norm * np.exp(-0.5 * DpD)
 
+    def to_log_probability_density(self, X):
+        self._check_initialized()
+
+        X = np.atleast_2d(X)
+        n_features = X.shape[1]
+
+        C = self.covariance
+        try:
+            L = sp.linalg.cholesky(C, lower=True)
+        except np.linalg.LinAlgError:
+            C = self.covariance + 1e-3 * np.eye(n_features)
+            L = sp.linalg.cholesky(C, lower=True)
+        D = X - self.mean
+        cov_sol = sp.linalg.solve_triangular(L, D.T, lower=True).T
+        if self.norm is None:
+            # <hyin/Oct-11th-2016> how can a library make such a fundamental mistake!!
+            # self.norm = 0.5 / np.pi ** (0.5 * n_features) / (sp.linalg.det(L) + 1e-5)
+            self.norm = 1. / (2*np.pi) ** (0.5 * n_features) / (sp.linalg.det(L) + 1e-10)
+
+        DpD = np.sum(cov_sol ** 2, axis=1)
+        return -0.5*DpD - np.log(self.norm)
+
     def marginalize(self, indices):
         """Marginalize over everything except the given indices.
 
@@ -184,6 +206,19 @@ class MVN(object):
         self._check_initialized()
         return self._condition(invert_indices(self.mean.shape[0], indices),
                                indices, X)
+    def gradient(self, X):
+        """Gradient for the loglikelihood at the given value"""
+        self._check_initialized()
+        C = self.covariance
+        try:
+            L = sp.linalg.cholesky(C, lower=True)
+        except np.linalg.LinAlgError:
+            C = self.covariance + 1e-3 * np.eye(n_features)
+            L = sp.linalg.cholesky(C, lower=True)
+        D = X - self.mean
+        cov_sol = sp.linalg.solve_triangular(L, D.T, lower=True).T
+        grads = -sp.linalg.solve_triangular(L.T, cov_sol.T, lower=False).T
+        return grads
 
     def _condition(self, i1, i2, X):
         cov_12 = self.covariance[np.ix_(i1, i2)]
@@ -256,3 +291,14 @@ def plot_error_ellipse(ax, mvn):
                       angle=np.degrees(angle))
         ell.set_alpha(0.25)
         ax.add_artist(ell)
+
+def check_loglikelihood_grads(mvn, X):
+    """
+    Check gradient for loglikelihood of given multivariate Gaussian distribution
+    """
+    if len(X.shape) == 1:
+        res = sp.optimize.check_grad(lambda x:mvn.to_log_probability_density(x), mvn.gradient, X)
+    else:
+        res = [sp.optimize.check_grad(lambda x:mvn.to_log_probability_density(x), mvn.gradient, sample) for sample in X]
+        res = np.mean(res)
+    return res

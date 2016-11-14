@@ -35,7 +35,7 @@ class GMM(object):
     more features
     """
     def __init__(self, n_components, priors=None, means=None, covariances=None,
-                 verbose=0, random_state=None, covariance_type='diag', thresh=None, tol=0.001, min_covar=0.001, n_iter=100, n_init=1, params='wmc', init_params='wmc'):
+                 verbose=0, random_state=None, covariance_type='diag', thresh=None, tol=0.001, min_covar=0.001, n_iter=100, n_init=1, params='wmc', init_params='kmeans'):
         self.n_components = n_components
         self.priors = priors
         self.means = means
@@ -131,28 +131,28 @@ class GMM(object):
         use KMeans initialization and support different types of covariances
         return the BIC score for potential model selection
         """
-        skGMM = skmixture.GMM(  n_components=self.n_components,
-                                covariance_type=self.covariance_type,
-                                random_state=self.random_state,
-                                thresh=self.thresh,
-                                tol=self.tol,
-                                min_covar=self.min_covar,
-                                n_iter=self.n_iter,
-                                n_init=self.n_init,
-                                params=self.params,
-                                init_params=self.init_params,
-                                verbose=self.verbose)
+        skGMM = skmixture.GaussianMixture(  n_components=self.n_components,
+                                            covariance_type=self.covariance_type,
+                                            random_state=self.random_state,
+                                            # thresh=self.thresh,
+                                            tol=self.tol,
+                                            # min_covar=self.min_covar,
+                                            max_iter=self.n_iter,
+                                            n_init=self.n_init,
+                                            # params=self.params,
+                                            init_params=self.init_params,
+                                            verbose=self.verbose)
         skGMM.fit(X)
 
         #retrieve estimated parameters
         self.priors = skGMM.weights_
         self.means = skGMM.means_
         if self.covariance_type == 'spherical' or self.covariance_type == 'diag':
-            self.covariances = np.array([np.diag(covar) for covar in skGMM.covars_])
+            self.covariances = np.array([np.diag(covar) for covar in skGMM.covariances_])
         elif self.covariance_type == 'tied':
-            self.covariances = np.array([skGMM.covars_ for i in range(self.n_components)])
+            self.covariances = np.array([skGMM.covariances_ for i in range(self.n_components)])
         elif self.covariance_type == 'full':
-            self.covariances = skGMM.covars_
+            self.covariances = skGMM.covariances_
 
         return skGMM.bic(X)
 
@@ -248,8 +248,24 @@ class GMM(object):
         # p = [MVN(mean=self.means[k], covariance=self.covariances[k],
         #          random_state=self.random_state).to_probability_density(X)
         #      for k in range(self.n_components)]
-        p = self.to_components_probability_density(self, X)
+        p = self.to_components_probability_density(X)
         return np.dot(self.priors, p)
+
+    def gradient(self, X):
+        """
+        Gradient for the likelihood at the given value
+        """
+        responsibilities = self.to_responsibilities(X)
+        grads = [np.empty(X.shape) for k in range(self.n_components)]
+        for k in range(self.n_components):
+            tmp_mvn = MVN(
+                mean=self.means[k], covariance=self.covariances[k],
+                random_state=self.random_state)
+
+            grads[k] = tmp_mvn.gradient(X) * (self.priors[k] * tmp_mvn.to_probability_density(X))
+
+        grads = np.sum(grads, axis=0)
+        return grads
 
     def to_components_probability_density(self, X):
         self._check_initialized()
@@ -387,3 +403,20 @@ def plot_error_ellipses(ax, gmm, colors=None):
             if colors is not None:
                 ell.set_color(next(colors))
             ax.add_artist(ell)
+
+import scipy as sp
+
+def check_likelihood_grads(gmm, X):
+    """
+    Check gradient for loglikelihood of given multivariate Gaussian distribution
+    """
+    if len(X.shape) == 1:
+        res = sp.optimize.check_grad(lambda x:gmm.to_probability_density(x), gmm.gradient, X)
+    else:
+        def tmp_func(x):
+            return gmm.to_probability_density(np.array([x]))[0]
+        def tmp_grad_func(x):
+            return gmm.gradient(np.array([x]))[0]
+        res = [sp.optimize.check_grad(tmp_func, tmp_grad_func, sample) for sample in X]
+        res = np.mean(res)
+    return res

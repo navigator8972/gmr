@@ -1,10 +1,10 @@
 import sys
 import numpy as np
-from gmr.utils import check_random_state
+from gmr.gmr.utils import check_random_state
 from nose.tools import assert_equal, assert_less, assert_raises
 from numpy.testing import assert_array_almost_equal
 from cStringIO import StringIO
-from gmr import GMM, plot_error_ellipses
+from gmr.gmr import GMM, plot_error_ellipses, check_likelihood_grads
 from test_mvn import AxisStub
 
 
@@ -55,6 +55,18 @@ def test_probability_density():
     approx_int = np.sum(p) * ((x[-1] - x[0]) / 201) ** 2
     assert_less(np.abs(1.0 - approx_int), 0.01)
 
+def test_probability_density_gradient():
+    global X
+    global random_state
+
+    gmm = GMM(n_components=2, random_state=random_state)
+    gmm.from_samples(X)
+
+    x = np.linspace(-100, 100, 201)
+    X_grid = np.vstack(map(np.ravel, np.meshgrid(x, x))).T
+    assert_less(check_likelihood_grads(gmm, X), 1e-6)
+
+    return
 
 def test_conditional_distribution():
     """Test moments from conditional GMM."""
