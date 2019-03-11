@@ -1,10 +1,9 @@
+from __future__ import print_function
 import numpy as np
 from .utils import check_random_state
 from .mvn import MVN
 
 import sklearn.mixture as skmixture
-
-import cPickle as cp
 
 class GMM(object):
     """Gaussian Mixture Model.
@@ -91,7 +90,6 @@ class GMM(object):
                                   dtype=np.float) / self.n_components
 
         if self.means is None:
-            # TODO k-means++
             indices = self.random_state.choice(
                 np.arange(n_samples), self.n_components)
             self.means = X[indices]
@@ -158,18 +156,18 @@ class GMM(object):
 
     def save_model(self, fname):
         if self.priors is None or self.means is None or self.covariances is None:
-            print 'Model parameters have not been initialized.'
+            print('Model parameters have not been initialized.')
         else:
             model_dict = {'priors':self.priors, 'means':self.means, 'covariances':self.covariances}
-            cp.dump(model_dict, open(fname, 'wb'))
-            print 'Model saved to {0}'.format(fname)
+            np.save(fname, model_dict)
+            print('Model saved to {0}'.format(fname))
         return
 
     def load_model(self, fname):
-        model_dict = cp.load(open(fname, 'rb'))
+        model_dict = np.load(fname).item()
 
         if model_dict is None:
-            print 'Failed to load model {0}'.format(fname)
+            print('Failed to load model {0}'.format(fname))
         else:
             self.n_components = len(model_dict['priors'])
             self.priors = model_dict['priors']

@@ -114,8 +114,6 @@ class MVN(object):
         D = X - self.mean
         cov_sol = sp.linalg.solve_triangular(L, D.T, lower=True).T
         if self.norm is None:
-            # <hyin/Oct-11th-2016> how can a library make such a fundamental mistake!!
-            # self.norm = 0.5 / np.pi ** (0.5 * n_features) / (sp.linalg.det(L) + 1e-5)
             self.norm = 1. / (2*np.pi) ** (0.5 * n_features) / (sp.linalg.det(L) + 1e-10)
 
         DpD = np.sum(cov_sol ** 2, axis=1)
@@ -136,8 +134,6 @@ class MVN(object):
         D = X - self.mean
         cov_sol = sp.linalg.solve_triangular(L, D.T, lower=True).T
         if self.norm is None:
-            # <hyin/Oct-11th-2016> how can a library make such a fundamental mistake!!
-            # self.norm = 0.5 / np.pi ** (0.5 * n_features) / (sp.linalg.det(L) + 1e-5)
             self.norm = 1. / (2*np.pi) ** (0.5 * n_features) / (sp.linalg.det(L) + 1e-10)
 
         DpD = np.sum(cov_sol ** 2, axis=1)
