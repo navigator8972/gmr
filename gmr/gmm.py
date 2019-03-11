@@ -253,7 +253,7 @@ class GMM(object):
         """
         Gradient for the likelihood at the given value
         """
-        responsibilities = self.to_responsibilities(X)
+        #responsibilities = self.to_responsibilities(X)
         grads = [np.empty(X.shape) for k in range(self.n_components)]
         for k in range(self.n_components):
             tmp_mvn = MVN(
